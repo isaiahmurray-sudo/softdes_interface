@@ -1,0 +1,6 @@
+data/polls/*
+.vscode/*
+*.pyc
+__pycache__/
+.venv
+controllers/.local_confidential/
