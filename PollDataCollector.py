@@ -4,6 +4,9 @@ Features:
 - User-friendly interface to configure poll parameters (exposure schedule, frequency, push settings)
 - Real-time progress updates and live graphing of LCR and ADC data during polling
 - Automatic saving of poll data to JSON files with timestamped filenames
+
+(Ideally this should be ignored, this file may be the application but isn't meant to represent any
+part of the assignment. It's just a way to view the data live and save it in a more convenient way than the Jupyter notebooks.)
 """
 
 import sys

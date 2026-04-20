@@ -3,6 +3,9 @@
 This module collects trial parameters from a user, initializes either debug or
 hardware-backed controllers, runs a poll through ``PollController``, and prints
 summary statistics for quick validation.
+
+(Ideally this should be ignored, this file may be the application but isn't meant to represent any
+part of the assignment. It's just a way to view the data live and save it in a more convenient way than the Jupyter notebooks.)
 """
 
 import json
