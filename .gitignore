@@ -1,4 +1,7 @@
-data/polls/*
+controllers/data/polls/*
+controllers/data/polls/raw/PL*
+PL*.json
+*measurements.csv
 .vscode/*
 *.pyc
 __pycache__/
