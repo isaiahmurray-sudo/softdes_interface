@@ -18,12 +18,29 @@ from datetime import datetime
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QTimer, pyqtSignal, QObject
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QCheckBox, QScrollArea, QGroupBox, 
-                             QPushButton, QLineEdit, QLabel, QFileDialog, 
-                             QTextEdit, QComboBox, QListWidget, QAbstractItemView,
-                             QProgressBar, QSplitter, QDialog,
-                             QFormLayout, QDialogButtonBox)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QCheckBox,
+    QScrollArea,
+    QGroupBox,
+    QPushButton,
+    QLineEdit,
+    QLabel,
+    QFileDialog,
+    QTextEdit,
+    QComboBox,
+    QListWidget,
+    QAbstractItemView,
+    QProgressBar,
+    QSplitter,
+    QDialog,
+    QFormLayout,
+    QDialogButtonBox,
+)
 from PyQt6.QtCore import Qt
 
 import matplotlib.pyplot as plt
@@ -31,13 +48,24 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import pyvisa
 
-from controllers.LeashController import LeashControllerHardware, LeashControllerDebug, ExposureParameter, ExposureImage
-from controllers.LCRController import LCRControllerHardware, LCRControllerDebug, MeasurementMode, MeasurementSpeed
+from controllers.LeashController import (
+    LeashControllerHardware,
+    LeashControllerDebug,
+    ExposureParameter,
+    ExposureImage,
+)
+from controllers.LCRController import (
+    LCRControllerHardware,
+    LCRControllerDebug,
+    MeasurementMode,
+    MeasurementSpeed,
+)
 from controllers.ADCController import ADCControllerHardware, ADCControllerDebug
 from datastructs.PollData import PollParameters, TrialInfo
 from PollController import PollController
 
 DEFAULT_LCR_COM_PORT = "4"
+
 
 class PollWorker(QObject):
     """Qt helper object that starts a poll and emits progress/completion signals."""
@@ -55,17 +83,21 @@ class PollWorker(QObject):
 
     def start_poll(self):
         """Start polling asynchronously and forward completion to Qt signals."""
+
         def on_completion():
             self.timer.stop()
             self.poll_finished.emit()
-        
-        self.poll_controller.start_poll(self.poll_params, wait_for_completion=False, on_completion=on_completion)
+
+        self.poll_controller.start_poll(
+            self.poll_params, wait_for_completion=False, on_completion=on_completion
+        )
         self.timer.start(100)  # Still keep timer for progress updates
 
     def check_progress(self):
         """Emit current normalized progress from the backing controller."""
         progress = self.poll_controller.progress
         self.progress_updated.emit(progress)
+
 
 class PollDataCollectorApp(QMainWindow):
     """Main GUI window used to configure, run, and visualize polling trials."""
@@ -122,25 +154,41 @@ class PollDataCollectorApp(QMainWindow):
 
         sidebar_layout.addWidget(QLabel("Resin Type:"))
         self.resin_dropdown = QComboBox()
-        self.resin_dropdown.addItems(["Gray", "White", "Black", "FastModel", "FlameRetardant","Durable","HighTemp","Rigid10K", "SurgicalGuide", "Clear", "PrecisionModel", "MRC201", "Unknown"])
+        self.resin_dropdown.addItems(
+            [
+                "Gray",
+                "White",
+                "Black",
+                "FastModel",
+                "FlameRetardant",
+                "Durable",
+                "HighTemp",
+                "Rigid10K",
+                "SurgicalGuide",
+                "Clear",
+                "PrecisionModel",
+                "MRC201",
+                "Unknown",
+            ]
+        )
         sidebar_layout.addWidget(self.resin_dropdown)
 
         # Exposure segments
         exposure_group = QGroupBox("Exposure Segments")
         exposure_layout = QVBoxLayout(exposure_group)
-        
+
         self.segments_layout = QVBoxLayout()
         exposure_layout.addLayout(self.segments_layout)
-        
+
         add_segment_button = QPushButton("Add Segment")
         add_segment_button.clicked.connect(self.add_exposure_segment)
         exposure_layout.addWidget(add_segment_button)
-        
+
         # Default segments
         self.add_exposure_segment(duration=5.0, intensity=0.0)
         self.add_exposure_segment(duration=5.0, intensity=1.0)
         self.add_exposure_segment(duration=10.0, intensity=0.0)
-        
+
         sidebar_layout.addWidget(exposure_group)
 
         # Frequency
@@ -167,7 +215,9 @@ class PollDataCollectorApp(QMainWindow):
 
         # Start button
         self.start_button = QPushButton("Start Poll")
-        self.start_button.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold;")
+        self.start_button.setStyleSheet(
+            "background-color: #2ecc71; color: white; font-weight: bold;"
+        )
         self.start_button.clicked.connect(self.start_poll)
         sidebar_layout.addWidget(self.start_button)
 
@@ -239,19 +289,21 @@ class PollDataCollectorApp(QMainWindow):
     def add_exposure_segment(self, duration=5.0, intensity=0.0):
         """Append an editable exposure segment row to the schedule panel."""
         segment_layout = QHBoxLayout()
-        
+
         duration_edit = QLineEdit(str(duration))
         intensity_edit = QLineEdit(str(intensity))
-        
+
         segment_layout.addWidget(QLabel("Duration (s):"))
         segment_layout.addWidget(duration_edit)
         segment_layout.addWidget(QLabel("Intensity (0-1):"))
         segment_layout.addWidget(intensity_edit)
-        
+
         remove_button = QPushButton("Remove")
-        remove_button.clicked.connect(lambda: self.remove_exposure_segment(segment_layout))
+        remove_button.clicked.connect(
+            lambda: self.remove_exposure_segment(segment_layout)
+        )
         segment_layout.addWidget(remove_button)
-        
+
         self.segments_layout.addLayout(segment_layout)
         self.exposure_segments.append((duration_edit, intensity_edit, segment_layout))
 
@@ -299,7 +351,10 @@ class PollDataCollectorApp(QMainWindow):
 
             logging.info("USB / VISA Device Scan:\n%s", "\n".join(lines))
         except Exception as e:
-            logging.exception("USB / VISA Device Scan Failed: could not enumerate VISA resources: %s", e)
+            logging.exception(
+                "USB / VISA Device Scan Failed: could not enumerate VISA resources: %s",
+                e,
+            )
         finally:
             if rm is not None:
                 try:
@@ -340,7 +395,9 @@ class PollDataCollectorApp(QMainWindow):
         form_layout.addRow("LCR COM Port:", lcr_com_input)
         layout.addLayout(form_layout)
 
-        dialog_buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        dialog_buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         dialog_buttons.accepted.connect(dialog.accept)
         dialog_buttons.rejected.connect(dialog.reject)
         layout.addWidget(dialog_buttons)
@@ -351,7 +408,9 @@ class PollDataCollectorApp(QMainWindow):
         leash_ip = leash_ip_input.text().strip()
         com_port = self.normalize_com_port(lcr_com_input.text())
         if not leash_ip:
-            logging.warning("Invalid connection settings: leash IP address cannot be empty.")
+            logging.warning(
+                "Invalid connection settings: leash IP address cannot be empty."
+            )
             return
 
         self.leash_ip = leash_ip
@@ -365,21 +424,35 @@ class PollDataCollectorApp(QMainWindow):
             # Initialize LCR graph
             self.lcr_figure.clear()
             ax = self.lcr_figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'Ready to start poll...', 
-                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
-            ax.set_title('LCR Data')
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Impedance (Ω)')
+            ax.text(
+                0.5,
+                0.5,
+                "Ready to start poll...",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=12,
+            )
+            ax.set_title("LCR Data")
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Impedance (Ω)")
             self.lcr_canvas.draw()
 
             # Initialize ADC graph
             self.adc_figure.clear()
             ax = self.adc_figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'Ready to start poll...', 
-                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
-            ax.set_title('ADC Data')
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Voltage (V)')
+            ax.text(
+                0.5,
+                0.5,
+                "Ready to start poll...",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=12,
+            )
+            ax.set_title("ADC Data")
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Voltage (V)")
             self.adc_canvas.draw()
         except Exception as e:
             print(f"Error initializing graphs: {e}")
@@ -400,7 +473,11 @@ class PollDataCollectorApp(QMainWindow):
             try:
                 duration = float(duration_edit.text())
                 intensity = float(intensity_edit.text())
-                exposure_params.append(ExposureParameter(duration=duration, intensity=intensity, image=ExposureImage.V2))
+                exposure_params.append(
+                    ExposureParameter(
+                        duration=duration, intensity=intensity, image=ExposureImage.V2
+                    )
+                )
             except ValueError:
                 logging.warning("Invalid duration or intensity in exposure segments.")
                 return
@@ -420,9 +497,7 @@ class PollDataCollectorApp(QMainWindow):
             return
 
         trial_info = TrialInfo(
-            trial_name=trial_name,
-            resin_type=resin_type,
-            pre_trial_notes=pre_notes
+            trial_name=trial_name, resin_type=resin_type, pre_trial_notes=pre_notes
         )
 
         poll_params = PollParameters(
@@ -432,7 +507,7 @@ class PollDataCollectorApp(QMainWindow):
             trial_info=trial_info,
             push_force=push_force,
             push_repeats=push_repeats,
-            push_delay_s=push_delay
+            push_delay_s=push_delay,
         )
 
         # Initialize controllers
@@ -441,7 +516,9 @@ class PollDataCollectorApp(QMainWindow):
             adc = ADCControllerHardware() if not debug else ADCControllerDebug()
             lcr = LCRControllerHardware() if not debug else LCRControllerDebug()
 
-            self.poll_controller = PollController(leash_controller=leash, lcr_controller=lcr, adc_controller=adc)
+            self.poll_controller = PollController(
+                leash_controller=leash, lcr_controller=lcr, adc_controller=adc
+            )
 
             # Connect if not debug
             if not debug:
@@ -488,48 +565,83 @@ class PollDataCollectorApp(QMainWindow):
             # Update LCR graph with impedance, phase, and ionic viscosity
             self.lcr_figure.clear()
             ax1 = self.lcr_figure.add_subplot(111)
-            
+
             lcr_data = self.current_poll_data.lcr_measurements
             if len(lcr_data) > 0:
-                times = lcr_data['Time'].values
+                times = lcr_data["Time"].values
                 times = times - times[0]  # Start from 0
-                z_values = lcr_data['Z'].values
-                phase_values = lcr_data['Phase'].values
-                
+                z_values = lcr_data["Z"].values
+                phase_values = lcr_data["Phase"].values
+
                 # Calculate ionic viscosity using the same algorithm as EasyDataViewer
                 ionic_viscosity = self._compute_ionic_viscosity(z_values, phase_values)
-                
+
                 # Plot impedance on left axis (ax1)
-                line1 = ax1.plot(times, z_values, 'b-', linewidth=1.5, alpha=0.8, label='Impedance (Z)')
-                ax1.set_xlabel('Time (s)', fontweight='bold')
-                ax1.set_ylabel('Impedance (Ω)', fontweight='bold', color='b')
-                ax1.tick_params(axis='y', labelcolor='b')
-                
+                line1 = ax1.plot(
+                    times,
+                    z_values,
+                    "b-",
+                    linewidth=1.5,
+                    alpha=0.8,
+                    label="Impedance (Z)",
+                )
+                ax1.set_xlabel("Time (s)", fontweight="bold")
+                ax1.set_ylabel("Impedance (Ω)", fontweight="bold", color="b")
+                ax1.tick_params(axis="y", labelcolor="b")
+
                 # Create right axis for phase (ax2)
                 ax2 = ax1.twinx()
-                line2 = ax2.plot(times, phase_values, 'g--', linewidth=1.5, alpha=0.8, label='Phase (°)')
-                ax2.set_ylabel('Phase (°)', fontweight='bold', color='g', rotation=270, labelpad=15)
-                ax2.tick_params(axis='y', labelcolor='g')
-                
+                line2 = ax2.plot(
+                    times,
+                    phase_values,
+                    "g--",
+                    linewidth=1.5,
+                    alpha=0.8,
+                    label="Phase (°)",
+                )
+                ax2.set_ylabel(
+                    "Phase (°)", fontweight="bold", color="g", rotation=270, labelpad=15
+                )
+                ax2.tick_params(axis="y", labelcolor="g")
+
                 # Create third axis for ionic viscosity (ax3), offset to the right
                 ax3 = ax1.twinx()
-                ax3.spines['right'].set_position(('outward', 60))
-                line3 = ax3.plot(times, ionic_viscosity, 'r-', linewidth=1.5, alpha=0.8, label='Ionic Viscosity')
-                ax3.set_ylabel('Ionic Viscosity', fontweight='bold', color='r', rotation=270, labelpad=25)
-                ax3.tick_params(axis='y', labelcolor='r')
-                
-                ax1.set_title(f'LCR Data ({len(lcr_data)} samples)', fontweight='bold')
+                ax3.spines["right"].set_position(("outward", 60))
+                line3 = ax3.plot(
+                    times,
+                    ionic_viscosity,
+                    "r-",
+                    linewidth=1.5,
+                    alpha=0.8,
+                    label="Ionic Viscosity",
+                )
+                ax3.set_ylabel(
+                    "Ionic Viscosity",
+                    fontweight="bold",
+                    color="r",
+                    rotation=270,
+                    labelpad=25,
+                )
+                ax3.tick_params(axis="y", labelcolor="r")
+
+                ax1.set_title(f"LCR Data ({len(lcr_data)} samples)", fontweight="bold")
                 ax1.grid(True, alpha=0.3)
-                
+
                 # Combined legend
                 lines = line1 + line2 + line3
                 labels = [l.get_label() for l in lines]
-                ax1.legend(lines, labels, loc='upper left', fontsize='small')
+                ax1.legend(lines, labels, loc="upper left", fontsize="small")
             else:
-                ax1.text(0.5, 0.5, 'Waiting for LCR data...', 
-                       ha='center', va='center', transform=ax1.transAxes)
-                ax1.set_title('LCR Data')
-            
+                ax1.text(
+                    0.5,
+                    0.5,
+                    "Waiting for LCR data...",
+                    ha="center",
+                    va="center",
+                    transform=ax1.transAxes,
+                )
+                ax1.set_title("LCR Data")
+
             self.lcr_figure.tight_layout()
             self.lcr_canvas.draw()
         except Exception as e:
@@ -539,24 +651,30 @@ class PollDataCollectorApp(QMainWindow):
             # Update ADC graph
             self.adc_figure.clear()
             ax = self.adc_figure.add_subplot(111)
-            
+
             adc_data = self.current_poll_data.adc_measurements
             if len(adc_data) > 0:
-                times = adc_data['Time'].values
+                times = adc_data["Time"].values
                 times = times - times[0]  # Start from 0
-                v_values = adc_data['V'].values
-                
-                ax.plot(times, v_values, 'r-', linewidth=1.5, label='Voltage (V)')
-                ax.set_xlabel('Time (s)')
-                ax.set_ylabel('Voltage (V)')
-                ax.set_title(f'ADC Data ({len(adc_data)} samples)')
+                v_values = adc_data["V"].values
+
+                ax.plot(times, v_values, "r-", linewidth=1.5, label="Voltage (V)")
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Voltage (V)")
+                ax.set_title(f"ADC Data ({len(adc_data)} samples)")
                 ax.grid(True, alpha=0.3)
                 ax.legend()
             else:
-                ax.text(0.5, 0.5, 'Waiting for ADC data...', 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title('ADC Data')
-            
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Waiting for ADC data...",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_title("ADC Data")
+
             self.adc_canvas.draw()
         except Exception as e:
             print(f"Error updating ADC graph: {e}")
@@ -572,41 +690,46 @@ class PollDataCollectorApp(QMainWindow):
         except Exception as e:
             logging.exception("Failed to auto-save poll data: %s", e)
 
-    def _compute_ionic_viscosity(self, z_ohm: np.ndarray, phase_deg: np.ndarray,
-                                  cell_constant_cm_inv: float = 1.0, walden_constant: float = 1.0) -> np.ndarray:
+    def _compute_ionic_viscosity(
+        self,
+        z_ohm: np.ndarray,
+        phase_deg: np.ndarray,
+        cell_constant_cm_inv: float = 1.0,
+        walden_constant: float = 1.0,
+    ) -> np.ndarray:
         """
         Compute ionic viscosity from impedance and phase.
-        
+
         Based on ionic_viscosity_analysis.py implementation.
         Algorithm:
         1. Calculate parallel conductance from impedance and phase
         2. Calculate bulk conductivity using cell constant
         3. Calculate ionic viscosity using Walden constant
-        
+
         Args:
             z_ohm: Impedance values in ohms
             phase_deg: Phase values in degrees
             cell_constant_cm_inv: Cell constant in cm^-1
             walden_constant: Walden constant for the material
-            
+
         Returns:
             Array of ionic viscosity values
         """
         phase_rad = np.deg2rad(phase_deg)
-        
+
         # 1. Calculate Parallel Conductance (Siemens)
         z_safe = np.maximum(np.abs(z_ohm), 1e-12)
         conductance_s = np.cos(phase_rad) / z_safe
-        
+
         # Mask out invalid physical states (conductance must be positive)
         conductance_s = np.where(conductance_s > 0, conductance_s, np.nan)
-        
+
         # 2. Calculate Bulk Conductivity (S/cm)
         conductivity_s_per_cm = conductance_s * cell_constant_cm_inv
-        
+
         # 3. Calculate Ionic Viscosity using the Walden constant
         ionic_viscosity = walden_constant / conductivity_s_per_cm
-        
+
         return ionic_viscosity
 
     def save_data(self):
@@ -631,7 +754,9 @@ class PollDataCollectorApp(QMainWindow):
         settings.setValue("trial_name", self.trial_name_input.text())
         settings.setValue("resin", self.resin_dropdown.currentText())
         settings.setValue("frequency", self.frequency_input.text())
-        settings.setValue("minimum_exposure_time_s", self.minimum_exposure_time_input.text())
+        settings.setValue(
+            "minimum_exposure_time_s", self.minimum_exposure_time_input.text()
+        )
         settings.setValue("push_force", self.push_force_input.text())
         settings.setValue("push_repeats", self.push_repeats_input.text())
         settings.setValue("push_delay", self.push_delay_input.text())
@@ -645,18 +770,23 @@ class PollDataCollectorApp(QMainWindow):
         self.trial_name_input.setText(settings.value("trial_name", "Default Trial"))
         self.resin_dropdown.setCurrentText(settings.value("resin", "Unknown"))
         self.frequency_input.setText(settings.value("frequency", "1000"))
-        self.minimum_exposure_time_input.setText(settings.value("minimum_exposure_time_s", "0"))
+        self.minimum_exposure_time_input.setText(
+            settings.value("minimum_exposure_time_s", "0")
+        )
         self.push_force_input.setText(settings.value("push_force", "70"))
         self.push_repeats_input.setText(settings.value("push_repeats", "2"))
         self.push_delay_input.setText(settings.value("push_delay", "3"))
         self.leash_ip = settings.value("leash_ip", "10.35.14.234")
-        self.lcr_com_port = self.normalize_com_port(settings.value("lcr_com_port", DEFAULT_LCR_COM_PORT))
+        self.lcr_com_port = self.normalize_com_port(
+            settings.value("lcr_com_port", DEFAULT_LCR_COM_PORT)
+        )
         self.update_connection_settings_label()
 
     def closeEvent(self, event):
         """Save settings before shutdown and accept the close request."""
         self.save_current_settings()
         event.accept()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

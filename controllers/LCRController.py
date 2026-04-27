@@ -7,15 +7,18 @@ from enum import Enum
 import time
 import logging
 
+
 class MeasurementMode(Enum):
     CAPACITANCE = "CPD"
     INDUCTANCE = "LCR"
     RESISTANCE = "RX"
     IMPEDANCE = "ZTH"
 
+
 class MeasurementSpeed(Enum):
     FAST = "FAST"
     SLOW = "SLOW"
+
 
 class LCRController:
     """Base interface for configuring and sampling an LCR instrument."""
@@ -28,12 +31,14 @@ class LCRController:
     @property
     def connected(self):
         return self._connected
-    
+
     @property
     def debug(self):
         return True
-    
-    def configureMeasurement(self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed):
+
+    def configureMeasurement(
+        self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
+    ):
         """Configure measurement mode, frequency, and speed on the device."""
         pass
 
@@ -51,17 +56,18 @@ class LCRController:
 
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.disconnect()
+
 
 class LCRControllerDebug(LCRController):
     """Simulated LCR implementation that emits deterministic sine-wave values."""
 
     def __init__(self):
         """Initialize configuration fields and mark debug controller connected."""
-        self.mode : MeasurementMode = None
-        self.speed : MeasurementSpeed = None
+        self.mode: MeasurementMode = None
+        self.speed: MeasurementSpeed = None
         self.frequency = None
         self._connected = True
 
@@ -73,7 +79,9 @@ class LCRControllerDebug(LCRController):
     def debug(self):
         return True
 
-    def configureMeasurement(self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed):
+    def configureMeasurement(
+        self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
+    ):
         self.frequency = frequency
         self.mode = mode
         self.speed = speed
@@ -84,9 +92,9 @@ class LCRControllerDebug(LCRController):
         return {
             "Z": self._dummy_impedance(),
             "Phase": self._dummy_phase(),
-            "Time": time.time()
+            "Time": time.time(),
         }
-    
+
     def disconnect(self):
         self._connected = False
 
@@ -94,12 +102,13 @@ class LCRControllerDebug(LCRController):
         logging.info(f"Simulated connection to LCRController on {com_port}")
         self._connected = True
         logging.info("Simulated connection established.")
-    
+
     def _dummy_impedance(self):
-        return math.sin(time.time()/10)
-    
+        return math.sin(time.time() / 10)
+
     def _dummy_phase(self):
-        return math.sin(time.time()/15)*90
+        return math.sin(time.time() / 15) * 90
+
 
 class LCRControllerHardware(LCRController):
     """PyVISA-backed LCR implementation for serial COM communication."""
@@ -118,8 +127,8 @@ class LCRControllerHardware(LCRController):
             raise e
 
         self.frequency = None
-        self.mode : MeasurementMode = None
-        self.speed : MeasurementSpeed = None
+        self.mode: MeasurementMode = None
+        self.speed: MeasurementSpeed = None
 
     @staticmethod
     def _normalize_com_port(com_port: str) -> str:
@@ -131,11 +140,11 @@ class LCRControllerHardware(LCRController):
         if not value:
             raise ValueError("COM port cannot be empty.")
         return value
-        
+
     @property
     def connected(self):
         return self._connected
-    
+
     @property
     def debug(self):
         return False
@@ -154,7 +163,7 @@ class LCRControllerHardware(LCRController):
         else:
             logging.critical("Attempted to query instrument while not connected.")
             return ""
-    
+
     def is_connected(self):
         """
         Checks if the instrument is still connected by sending an *IDN? query.
@@ -165,7 +174,9 @@ class LCRControllerHardware(LCRController):
         except:
             return False
 
-    def configureMeasurement(self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed):
+    def configureMeasurement(
+        self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
+    ):
         """Send SCPI commands needed to configure an impedance measurement."""
         self._write(f"MEAS:FUNC {mode.value}")
         self._write(f"FREQuency {frequency}")
@@ -181,11 +192,7 @@ class LCRControllerHardware(LCRController):
 
         response = self._query("MEASurement:RESUlt?")
         primary, secondary = self._parse_measurement_response(response)
-        return {
-            "Z": primary,
-            "Phase": secondary,
-            "Time": time.time()
-        }
+        return {"Z": primary, "Phase": secondary, "Time": time.time()}
 
     def _parse_measurement_response(self, response: str):
         """Parse comma-separated primary/secondary values from instrument output."""
@@ -199,7 +206,9 @@ class LCRControllerHardware(LCRController):
 
     def _parse_engineering_value(self, value_text: str) -> float:
         """Convert engineering notation with units into a float value."""
-        match = re.match(r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*([A-Za-zµΩ]*)", value_text)
+        match = re.match(
+            r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*([A-Za-zµΩ]*)", value_text
+        )
         if not match:
             raise ValueError(f"Could not parse numeric value from {value_text!r}")
 
@@ -229,14 +238,12 @@ class LCRControllerHardware(LCRController):
 
         return numeric_value * multiplier
 
-    def connect(self, com_port: str = '4'):
+    def connect(self, com_port: str = "4"):
         """Open the PyVISA serial resource for the configured COM port."""
         try:
             port = self._normalize_com_port(com_port)
             self.instrument = self.rm.open_resource(
-                f"ASRL{port}::INSTR",
-                write_termination='\n',
-                read_termination='\n'
+                f"ASRL{port}::INSTR", write_termination="\n", read_termination="\n"
             )
             self.instrument.timeout = 10000
             self._connected = True
@@ -244,7 +251,7 @@ class LCRControllerHardware(LCRController):
             self._connected = False
             logging.error(f"Failed to connect to instrument: {e}")
             raise e
-    
+
     def disconnect(self):
         """Close the instrument handle and update connection state."""
         try:
@@ -258,10 +265,16 @@ class LCRControllerHardware(LCRController):
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
 
-    parser = argparse.ArgumentParser(description="Run LCR controller diagnostics on a serial COM port.")
-    parser.add_argument("--com-port", default="4", help="Serial COM port number, default: 4")
+    parser = argparse.ArgumentParser(
+        description="Run LCR controller diagnostics on a serial COM port."
+    )
+    parser.add_argument(
+        "--com-port", default="4", help="Serial COM port number, default: 4"
+    )
     args = parser.parse_args()
 
     logging.info("Starting LCR diagnostics on ASRL%s::INSTR", args.com_port)
@@ -283,8 +296,15 @@ if __name__ == "__main__":
             logging.exception("*IDN? query failed: %s", exc)
 
         try:
-            controller.configureMeasurement(1000, MeasurementMode.IMPEDANCE, MeasurementSpeed.FAST)
-            logging.info("Measurement configured: frequency=%s, mode=%s, speed=%s", controller.frequency, controller.mode, controller.speed)
+            controller.configureMeasurement(
+                1000, MeasurementMode.IMPEDANCE, MeasurementSpeed.FAST
+            )
+            logging.info(
+                "Measurement configured: frequency=%s, mode=%s, speed=%s",
+                controller.frequency,
+                controller.mode,
+                controller.speed,
+            )
         except Exception as exc:
             logging.exception("configureMeasurement failed: %s", exc)
 

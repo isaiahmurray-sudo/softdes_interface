@@ -5,6 +5,7 @@ remote SSH-based hardware implementation used to execute Leash commands.
 """
 
 from enum import Enum
+
 try:
     from controllers.TimingRecorder import TimingRecorder
 except ImportError as e:
@@ -88,7 +89,7 @@ class ExposureParameter:
         return {
             "duration": self.duration,
             "intensity": self.intensity,
-            "image": self.image.value
+            "image": self.image.value,
         }
 
 
@@ -105,7 +106,7 @@ class LeashController:
     @property
     def status_timestamp(self):
         return self._status_timestamp
-    
+
     @property
     def time_since_last_status(self):
         if self._status_timestamp is None:
@@ -146,19 +147,19 @@ class LeashController:
 
     def connect(self, ip):
         raise NotImplementedError
-    
+
     def load_image(self, image: ExposureImage):
         raise NotImplementedError
-    
+
     def start_leash_session(self):
         raise NotImplementedError
-    
+
     def close_leash_session(self):
         raise NotImplementedError
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._timing_recorder.save_records()
         self.close_leash_session()
@@ -191,7 +192,7 @@ class LeashControllerDebug(LeashController):
         self._zpos = 0.1
         logging.info("Press complete.")
 
-    def load_image(self, image : ExposureImage):
+    def load_image(self, image: ExposureImage):
         logging.info(f"Loading image: {image}")
         self._timing_recorder.delay("load_image")
         logging.info("Image loaded.")
@@ -208,10 +209,12 @@ class LeashControllerDebug(LeashController):
 
     def get_status(self):
         self._timing_recorder.delay("get_status")
-        self._status = _load_confidential_json(DEBUG_STATUS_FILENAME, "debug status payload")
+        self._status = _load_confidential_json(
+            DEBUG_STATUS_FILENAME, "debug status payload"
+        )
         self._status_timestamp = time.time()
         return super().get_status()
-    
+
     def get_z_position(self):
         self.get_status()
         return self._zpos
@@ -242,8 +245,7 @@ class LeashControllerHardware(LeashController):
         self._loaded_image: ExposureImage | None = None
         self._leash_channel = None
         self._command_templates = _load_confidential_json(
-            COMMAND_TEMPLATES_FILENAME,
-            "leash command templates"
+            COMMAND_TEMPLATES_FILENAME, "leash command templates"
         )
 
     def _get_command_template(self, key: str) -> str:
@@ -270,7 +272,14 @@ class LeashControllerHardware(LeashController):
     def client(self):
         return self._client
 
-    def connect(self, ip, port="22", timeout=10, fetch_status=True, initialize_leash_session=True):
+    def connect(
+        self,
+        ip,
+        port="22",
+        timeout=10,
+        fetch_status=True,
+        initialize_leash_session=True,
+    ):
         """Open SSH transport, optionally initialize session, and fetch status."""
         task_id = self._timing_recorder.start_record("connect")
         if self._connected:
@@ -371,7 +380,9 @@ class LeashControllerHardware(LeashController):
 
         raise TimeoutError(f"Timed out waiting for leash marker: {marker}")
 
-    def _clean_repl_output(self, raw_output: str, marker: str, python_lines: list[str]) -> str:
+    def _clean_repl_output(
+        self, raw_output: str, marker: str, python_lines: list[str]
+    ) -> str:
         """Remove REPL echoes and marker tokens from session command output."""
         output = raw_output.replace("\r", "")
         output = output.replace(marker, "")
@@ -436,7 +447,9 @@ class LeashControllerHardware(LeashController):
             self._leash_channel = None
         self._timing_recorder.end_record(task_id)
 
-    def run_leash_persistent_python(self, python_lines: list[str], timeout: float | None = None) -> str:
+    def run_leash_persistent_python(
+        self, python_lines: list[str], timeout: float | None = None
+    ) -> str:
         """Run python lines in a long-lived remote leash runtime.
 
         timeout=None waits indefinitely for the command marker.
@@ -455,9 +468,13 @@ class LeashControllerHardware(LeashController):
                 except RuntimeError as exc:
                     if "closed unexpectedly" in str(exc) and attempt == 1:
                         self.close_leash_session()
-                        logging.warning("Leash session was closed unexpectedly; restarting once.")
+                        logging.warning(
+                            "Leash session was closed unexpectedly; restarting once."
+                        )
                         continue
-                    raise RuntimeError(f"Failed to run leash python command: {exc}") from exc
+                    raise RuntimeError(
+                        f"Failed to run leash python command: {exc}"
+                    ) from exc
 
                 output = self._clean_repl_output(raw_output, marker, python_lines)
 
@@ -466,7 +483,9 @@ class LeashControllerHardware(LeashController):
 
                 return output
 
-            raise RuntimeError("Failed to run leash python command after reconnect attempt")
+            raise RuntimeError(
+                "Failed to run leash python command after reconnect attempt"
+            )
 
     def _run_leash_python(self, python_lines: list[str]) -> str:
         """Run python statements as a one-off leash process."""
@@ -479,59 +498,68 @@ class LeashControllerHardware(LeashController):
         task_id = self._timing_recorder.start_record("load_image")
         image_path = f"/data/images/{image.value}"
         quoted_path = json.dumps(image_path)
-        self.run_leash_persistent_python([
-            self._render_command_template("load_image", image_path_json=quoted_path)
-        ], timeout=None)
+        self.run_leash_persistent_python(
+            [self._render_command_template("load_image", image_path_json=quoted_path)],
+            timeout=None,
+        )
         self._loaded_image = image
         self._timing_recorder.end_record(task_id)
-
 
     def expose(self, parameters: ExposureParameter):
         """Apply intensity mask, load image, and trigger timed exposure."""
         task_id = self._timing_recorder.start_record("expose")
 
-        self.run_leash_persistent_python([
-            self._render_command_template("set_calibration_mask", intensity=parameters.intensity)
-        ], timeout=None)
+        self.run_leash_persistent_python(
+            [
+                self._render_command_template(
+                    "set_calibration_mask", intensity=parameters.intensity
+                )
+            ],
+            timeout=None,
+        )
 
         self.load_image(parameters.image)
-        
-        result = self.run_leash_persistent_python([
-            self._render_command_template("expose_image", duration=parameters.duration)
-        ], timeout=None)
-        
+
+        result = self.run_leash_persistent_python(
+            [
+                self._render_command_template(
+                    "expose_image", duration=parameters.duration
+                )
+            ],
+            timeout=None,
+        )
+
         self._timing_recorder.end_record(task_id)
         return result
 
     def set_z_position(self, position: float):
         """Set absolute Z position through a one-off Leash command."""
         task_id = self._timing_recorder.start_record("set_z_position")
-        
-        result = self._run_leash_python([
-            self._render_command_template("set_z_position", position=position)
-        ])
-        
-        self._timing_recorder.end_record(task_id) 
+
+        result = self._run_leash_python(
+            [self._render_command_template("set_z_position", position=position)]
+        )
+
+        self._timing_recorder.end_record(task_id)
         return result
 
     def press_z(self, force: float):
         """Execute a force-controlled Z press command."""
         task_id = self._timing_recorder.start_record("press_z")
 
-        result = self._run_leash_python([
-            self._render_command_template("press_z", force=force)
-        ])
+        result = self._run_leash_python(
+            [self._render_command_template("press_z", force=force)]
+        )
 
         self._timing_recorder.end_record(task_id)
         return result
-    
 
     def get_z_position(self):
         """Return Z position extracted from a freshly queried status payload."""
         status = self.get_status()
         return status.get("z_position")
 
-    def get_status(self, try_run_persistent = True, attempts=3):
+    def get_status(self, try_run_persistent=True, attempts=3):
         """Fetch and parse Leash status, retrying persistent mode when enabled."""
         time_start = time.time()
         logging.info("Fetching status from LeashController...")
@@ -542,29 +570,40 @@ class LeashControllerHardware(LeashController):
                 response = raw_output.split("___partition___")[1]
                 return json.loads(response)
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse status output: {e}, raw output: {raw_output}")
+                logging.error(
+                    f"Failed to parse status output: {e}, raw output: {raw_output}"
+                )
                 raise RuntimeError("Failed to parse status output") from e
-    
-        task_id =self._timing_recorder.start_record("get_status")
+
+        task_id = self._timing_recorder.start_record("get_status")
         if try_run_persistent:
             for a in range(attempts):
                 try:
-                    output = self.run_leash_persistent_python([status_python_line], timeout=3.0)
+                    output = self.run_leash_persistent_python(
+                        [status_python_line], timeout=3.0
+                    )
                     status = process_status_output(output)
                     self._timing_recorder.end_record(task_id)
                     self._status_timestamp = time.time()
                     self._status = status
-                    logging.info(f"Status fetched successfully using persistent leash session. (Duration: {time.time() - time_start:.3f}s, attempt {a+1}/{attempts})")
+                    logging.info(
+                        f"Status fetched successfully using persistent leash session. (Duration: {time.time() - time_start:.3f}s, attempt {a+1}/{attempts})"
+                    )
                     return self._status
                 except Exception as e:
-                    logging.error(f"Failed to get status from LeashController from persistent session: {e}")
+                    logging.error(
+                        f"Failed to get status from LeashController from persistent session: {e}"
+                    )
         response = self._run_command(f"leash <<'EOF'\n{status_python_line}\nEOF")
         status = process_status_output(response)
         self._status_timestamp = time.time()
         self._status = status
         self._timing_recorder.end_record(task_id)
-        logging.info(f"Status fetched successfully using one-off leash command. (Duration: {time.time() - time_start:.2f}s)")
+        logging.info(
+            f"Status fetched successfully using one-off leash command. (Duration: {time.time() - time_start:.2f}s)"
+        )
         return status
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
