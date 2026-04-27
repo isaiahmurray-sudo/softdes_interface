@@ -10,37 +10,36 @@ part of the assignment. It's just a way to view the data live and save it in a m
 than the Jupyter notebooks.)
 """
 
-# pylint: disable=duplicate-code
-import logging
 import sys
-
+import logging
 import numpy as np
-import pyvisa
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
-# pylint: disable=no-name-in-module
-from PyQt6.QtCore import QObject, QSettings, QTimer, pyqtSignal
+# pylint: disable="no-name-in-module"
+from PyQt6.QtCore import QSettings, QTimer, pyqtSignal, QObject
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
-    QComboBox,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
     QMainWindow,
-    QProgressBar,
-    QPushButton,
-    QTextEdit,
-    QVBoxLayout,
     QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QCheckBox,
+    QGroupBox,
+    QPushButton,
+    QLineEdit,
+    QLabel,
+    QTextEdit,
+    QComboBox,
+    QProgressBar,
+    QDialog,
+    QFormLayout,
+    QDialogButtonBox,
 )
 
-# pylint: enable=no-name-in-module
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import pyvisa
+
+# pylint: enable="no-name-in-module"
 
 from controllers.adc_controller import ADCControllerDebug, ADCControllerHardware
 from controllers.lcr_controller import LCRControllerDebug, LCRControllerHardware
@@ -281,7 +280,7 @@ class PollDataCollectorApp(QMainWindow):
         lcr_layout = QVBoxLayout(lcr_group)
         self.lcr_figure = Figure(figsize=(5, 3), dpi=100)
         self.lcr_canvas = FigureCanvas(self.lcr_figure)
-        lcr_layout.addWidget(self.lcr_canvas)
+        lcr_layout.addWidget(self.lcr_canvas, 1)
         graph_layout.addWidget(lcr_group, 1)
 
         # ADC Graph
