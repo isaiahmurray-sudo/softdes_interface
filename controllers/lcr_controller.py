@@ -1,14 +1,17 @@
 """LCR controller abstractions and implementations for debug and hardware modes."""
 
-import pyvisa
+import time
+import logging
 import math
 import re
 from enum import Enum
-import time
-import logging
+
+import pyvisa
 
 
 class MeasurementMode(Enum):
+    """Measurement modes for LCR instrument."""
+
     CAPACITANCE = "CPD"
     INDUCTANCE = "LCR"
     RESISTANCE = "RX"
@@ -16,6 +19,8 @@ class MeasurementMode(Enum):
 
 
 class MeasurementSpeed(Enum):
+    """Measurement speed settings for LCR instrument."""
+
     FAST = "FAST"
     SLOW = "SLOW"
 
@@ -30,29 +35,27 @@ class LCRController:
 
     @property
     def connected(self):
+        """Check if the instrument is connected."""
         return self._connected
 
     @property
     def debug(self):
+        """Check if running in debug mode."""
         return True
 
-    def configureMeasurement(
+    def configure_measurement(
         self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
     ):
         """Configure measurement mode, frequency, and speed on the device."""
-        pass
 
     def measure(self):
         """Return a single measurement sample from the instrument."""
-        pass
 
     def disconnect(self):
         """Close any active connection to the instrument."""
-        pass
 
-    def connect(self):
+    def connect(self, com_port: str = ""):
         """Open a connection to the instrument transport."""
-        pass
 
     def __enter__(self):
         return self
@@ -66,6 +69,7 @@ class LCRControllerDebug(LCRController):
 
     def __init__(self):
         """Initialize configuration fields and mark debug controller connected."""
+        super().__init__()
         self.mode: MeasurementMode = None
         self.speed: MeasurementSpeed = None
         self.frequency = None
@@ -79,7 +83,7 @@ class LCRControllerDebug(LCRController):
     def debug(self):
         return True
 
-    def configureMeasurement(
+    def configure_measurement(
         self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
     ):
         self.frequency = frequency
@@ -88,7 +92,7 @@ class LCRControllerDebug(LCRController):
 
     def measure(self):
         if self.mode is None:
-            raise Exception("Measurement mode not configured.")
+            raise RuntimeError("Measurement mode not configured.")
         return {
             "Z": self._dummy_impedance(),
             "Phase": self._dummy_phase(),
@@ -98,8 +102,9 @@ class LCRControllerDebug(LCRController):
     def disconnect(self):
         self._connected = False
 
-    def connect(self, com_port):
-        logging.info(f"Simulated connection to LCRController on {com_port}")
+    def connect(self, com_port: str = ""):
+        """Open a connection to the debug LCR controller."""
+        logging.info("Simulated connection to LCRController on %s", com_port)
         self._connected = True
         logging.info("Simulated connection established.")
 
@@ -123,7 +128,7 @@ class LCRControllerHardware(LCRController):
                 self.connect(com_port)
         except Exception as e:
             self.instrument = None
-            logging.error(f"Failed to connect to instrument: {e}")
+            logging.error("Failed to connect to instrument: %s", e)
             raise e
 
         self.frequency = None
@@ -147,6 +152,7 @@ class LCRControllerHardware(LCRController):
 
     @property
     def debug(self):
+        """Check if running in debug mode."""
         return False
 
     def _write(self, command: str):
@@ -160,21 +166,21 @@ class LCRControllerHardware(LCRController):
         """Send a SCPI query and return the instrument response text."""
         if self.connected:
             return self.instrument.query(command)
-        else:
-            logging.critical("Attempted to query instrument while not connected.")
-            return ""
+
+        logging.critical("Attempted to query instrument while not connected.")
+        return ""
 
     def is_connected(self):
         """
         Checks if the instrument is still connected by sending an *IDN? query.
         """
         try:
-            idn = self._query("*IDN?")
+            self._query("*IDN?")
             return True
-        except:
+        except (OSError, ValueError):
             return False
 
-    def configureMeasurement(
+    def configure_measurement(
         self, frequency: float, mode: MeasurementMode, speed: MeasurementSpeed
     ):
         """Send SCPI commands needed to configure an impedance measurement."""
@@ -188,7 +194,7 @@ class LCRControllerHardware(LCRController):
     def measure(self):
         """Read and parse a measurement response into canonical numeric fields."""
         if self.mode is None:
-            raise Exception("Measurement mode not configured.")
+            raise RuntimeError("Measurement mode not configured.")
 
         response = self._query("MEASurement:RESUlt?")
         primary, secondary = self._parse_measurement_response(response)
@@ -231,10 +237,8 @@ class LCRControllerHardware(LCRController):
 
         if unit.startswith("mohm"):
             multiplier = 1e6
-        elif unit in multipliers:
-            multiplier = multipliers[unit]
         else:
-            multiplier = 1.0
+            multiplier = multipliers.get(unit, 1.0)
 
         return numeric_value * multiplier
 
@@ -247,10 +251,10 @@ class LCRControllerHardware(LCRController):
             )
             self.instrument.timeout = 10000
             self._connected = True
-        except Exception as e:
+        except (OSError, ValueError) as err:
             self._connected = False
-            logging.error(f"Failed to connect to instrument: {e}")
-            raise e
+            logging.error("Failed to connect to instrument: %s", err)
+            raise
 
     def disconnect(self):
         """Close the instrument handle and update connection state."""
@@ -258,8 +262,8 @@ class LCRControllerHardware(LCRController):
             self.instrument.close()
             self._connected = False
             logging.info("Instrument closed.")
-        except Exception as e:
-            logging.error(f"Failed to close instrument: {e}")
+        except (OSError, AttributeError) as err:
+            logging.error("Failed to close instrument: %s", err)
 
 
 if __name__ == "__main__":
@@ -290,13 +294,13 @@ if __name__ == "__main__":
         logging.info("Instrument timeout: %s", controller.instrument.timeout)
 
         try:
-            idn = controller._query("*IDN?")
-            logging.info("*IDN? response: %r", idn)
-        except Exception as exc:
+            IDN = controller.is_connected()  # pylint: disable=invalid-name
+            logging.info("*IDN? response: %r", IDN)
+        except (OSError, ValueError) as exc:  # pylint: disable=broad-exception-caught
             logging.exception("*IDN? query failed: %s", exc)
 
         try:
-            controller.configureMeasurement(
+            controller.configure_measurement(
                 1000, MeasurementMode.IMPEDANCE, MeasurementSpeed.FAST
             )
             logging.info(
@@ -305,14 +309,14 @@ if __name__ == "__main__":
                 controller.mode,
                 controller.speed,
             )
-        except Exception as exc:
-            logging.exception("configureMeasurement failed: %s", exc)
+        except (OSError, ValueError) as err:
+            logging.exception("configure_measurement failed: %s", err)
 
         try:
             measurement = controller.measure()
             logging.info("MEAS:RESUL? response parsed as: %s", measurement)
-        except Exception as exc:
-            logging.exception("measure() failed: %s", exc)
+        except (OSError, ValueError) as err:
+            logging.exception("measure() failed: %s", err)
 
     finally:
         controller.disconnect()

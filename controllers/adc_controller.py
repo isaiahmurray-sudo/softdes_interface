@@ -12,11 +12,9 @@ class ADCController:
 
     def __init__(self):
         """Initialize the ADC controller base type."""
-        pass
 
     def measure(self):
         """Return a single ADC sample dictionary."""
-        pass
 
     def __enter__(self):
         return self
@@ -25,6 +23,7 @@ class ADCController:
         pass
 
 
+# pylint: disable=too-few-public-methods
 class ADCControllerDebug(ADCController):
     """Debug ADC implementation that returns a constant voltage sample."""
 
@@ -33,6 +32,7 @@ class ADCControllerDebug(ADCController):
         return {"V": 1.23, "Time": time.time()}
 
 
+# pylint: disable=too-few-public-methods
 class ADCControllerHardware(ADCController):
     """Placeholder hardware ADC implementation."""
 

@@ -6,63 +6,52 @@ Features:
 - Automatic saving of poll data to JSON files with timestamped filenames
 
 (Ideally this should be ignored, this file may be the application but isn't meant to represent any
-part of the assignment. It's just a way to view the data live and save it in a more convenient way than the Jupyter notebooks.)
+part of the assignment. It's just a way to view the data live and save it in a more convenient way
+than the Jupyter notebooks.)
 """
 
-import sys
-import json
-import glob
-import os
+# pylint: disable=duplicate-code
 import logging
-from datetime import datetime
+import sys
+
 import numpy as np
-
-from PyQt6.QtCore import QSettings, QTimer, pyqtSignal, QObject
-from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QCheckBox,
-    QScrollArea,
-    QGroupBox,
-    QPushButton,
-    QLineEdit,
-    QLabel,
-    QFileDialog,
-    QTextEdit,
-    QComboBox,
-    QListWidget,
-    QAbstractItemView,
-    QProgressBar,
-    QSplitter,
-    QDialog,
-    QFormLayout,
-    QDialogButtonBox,
-)
-from PyQt6.QtCore import Qt
-
-import matplotlib.pyplot as plt
+import pyvisa
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import pyvisa
 
-from controllers.LeashController import (
-    LeashControllerHardware,
-    LeashControllerDebug,
-    ExposureParameter,
+# pylint: disable=no-name-in-module
+from PyQt6.QtCore import QObject, QSettings, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+# pylint: enable=no-name-in-module
+
+from controllers.adc_controller import ADCControllerDebug, ADCControllerHardware
+from controllers.lcr_controller import LCRControllerDebug, LCRControllerHardware
+from controllers.leash_controller import (
     ExposureImage,
+    ExposureParameter,
+    LeashControllerDebug,
+    LeashControllerHardware,
 )
-from controllers.LCRController import (
-    LCRControllerHardware,
-    LCRControllerDebug,
-    MeasurementMode,
-    MeasurementSpeed,
-)
-from controllers.ADCController import ADCControllerHardware, ADCControllerDebug
-from datastructs.PollData import PollParameters, TrialInfo
-from PollController import PollController
+from datastructs.poll_data import PollParameters, TrialInfo
+from poll_controller import PollController
 
 DEFAULT_LCR_COM_PORT = "4"
 
@@ -99,6 +88,7 @@ class PollWorker(QObject):
         self.progress_updated.emit(progress)
 
 
+# pylint: disable=too-many-instance-attributes
 class PollDataCollectorApp(QMainWindow):
     """Main GUI window used to configure, run, and visualize polling trials."""
 
@@ -117,9 +107,34 @@ class PollDataCollectorApp(QMainWindow):
         self.graph_update_timer = QTimer()
         self.graph_update_timer.timeout.connect(self.update_graphs)
 
+        # Basic instantiation so these exist prior to init_ui where they get populated
+        self.debug_checkbox = None
+        self.scan_devices_button = None
+        self.connection_settings_button = None
+        self.connection_settings_label = None
+        self.trial_name_input = None
+        self.resin_dropdown = None
+        self.segments_layout = None
+        self.frequency_input = None
+        self.minimum_exposure_time_input = None
+        self.push_force_input = None
+        self.push_repeats_input = None
+        self.push_delay_input = None
+        self.start_button = None
+        self.progress_bar = None
+        self.pre_test_notes = None
+        self.post_test_notes = None
+        self.thickness_input = None
+        self.save_button = None
+        self.lcr_figure = None
+        self.lcr_canvas = None
+        self.adc_figure = None
+        self.adc_canvas = None
+
         self.init_ui()
         self.load_settings()
 
+    # pylint: disable=too-many-locals,too-many-statements
     def init_ui(self):
         """Construct the full Qt layout for controls, notes, and live plots."""
         main_widget = QWidget()
@@ -309,7 +324,7 @@ class PollDataCollectorApp(QMainWindow):
 
     def remove_exposure_segment(self, layout):
         """Remove a previously created exposure segment row from the UI."""
-        for i, (dur, intens, lay) in enumerate(self.exposure_segments):
+        for i, (_, _, lay) in enumerate(self.exposure_segments):
             if lay == layout:
                 # Remove from layout
                 while layout.count():
@@ -323,7 +338,6 @@ class PollDataCollectorApp(QMainWindow):
     def update_exposure_schedule(self):
         """Deprecated no-op kept for compatibility with older UI callbacks."""
         # This method is no longer needed since segments are editable directly
-        pass
 
     def scan_usb_visa_devices(self):
         """Log currently visible VISA/USB resources for connection diagnostics."""
@@ -350,7 +364,7 @@ class PollDataCollectorApp(QMainWindow):
                 lines.append("  (none found)")
 
             logging.info("USB / VISA Device Scan:\n%s", "\n".join(lines))
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception(
                 "USB / VISA Device Scan Failed: could not enumerate VISA resources: %s",
                 e,
@@ -359,7 +373,7 @@ class PollDataCollectorApp(QMainWindow):
             if rm is not None:
                 try:
                     rm.close()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
 
     def normalize_com_port(self, com_port_text, default=DEFAULT_LCR_COM_PORT):
@@ -454,9 +468,10 @@ class PollDataCollectorApp(QMainWindow):
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Voltage (V)")
             self.adc_canvas.draw()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error initializing graphs: {e}")
 
+    # pylint: disable=too-many-locals
     def start_poll(self):
         """Collect UI parameters, initialize controllers, and start polling."""
         self.save_current_settings()
@@ -540,7 +555,7 @@ class PollDataCollectorApp(QMainWindow):
             self.progress_bar.setValue(0)
             self.graph_update_timer.start(200)  # Update graphs every 200ms
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Failed to initialize controllers: %s", e)
             self.start_button.setEnabled(True)
 
@@ -556,6 +571,7 @@ class PollDataCollectorApp(QMainWindow):
         self._auto_save_poll_data()
         self.start_button.setEnabled(True)
 
+    # pylint: disable=too-many-locals,too-many-statements
     def update_graphs(self):
         """Update LCR and ADC graphs with latest poll data."""
         if self.current_poll_data is None:
@@ -644,7 +660,7 @@ class PollDataCollectorApp(QMainWindow):
 
             self.lcr_figure.tight_layout()
             self.lcr_canvas.draw()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error updating LCR graph: {e}")
 
         try:
@@ -676,7 +692,7 @@ class PollDataCollectorApp(QMainWindow):
                 ax.set_title("ADC Data")
 
             self.adc_canvas.draw()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error updating ADC graph: {e}")
 
     def _auto_save_poll_data(self):
@@ -687,7 +703,7 @@ class PollDataCollectorApp(QMainWindow):
         try:
             self.poll_controller.save_to_file()
             logging.info("Poll data saved automatically.")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Failed to auto-save poll data: %s", e)
 
     def _compute_ionic_viscosity(
@@ -740,7 +756,7 @@ class PollDataCollectorApp(QMainWindow):
         try:
             self.poll_controller.save_to_file()
             logging.info("Poll data saved successfully.")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Failed to save poll data: %s", e)
 
         self.pre_test_notes.clear()
@@ -782,7 +798,7 @@ class PollDataCollectorApp(QMainWindow):
         )
         self.update_connection_settings_label()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event):  # pylint: disable=invalid-name
         """Save settings before shutdown and accept the close request."""
         self.save_current_settings()
         event.accept()

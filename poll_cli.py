@@ -5,29 +5,24 @@ hardware-backed controllers, runs a poll through ``PollController``, and prints
 summary statistics for quick validation.
 
 (Ideally this should be ignored, this file may be the application but isn't meant to represent any
-part of the assignment. It's just a way to view the data live and save it in a more convenient way than the Jupyter notebooks.)
+part of the assignment. It's just a way to view the data live and save it in a more convenient way
+than the Jupyter notebooks.)
 """
 
-import json
-from pathlib import Path
-import time
 import logging
-import argparse
-from controllers.LeashController import (
+from controllers.leash_controller import (
     LeashControllerHardware,
     LeashControllerDebug,
     ExposureParameter,
     ExposureImage,
 )
-from controllers.LCRController import (
+from controllers.lcr_controller import (
     LCRControllerHardware,
     LCRControllerDebug,
-    MeasurementMode,
-    MeasurementSpeed,
 )
-from controllers.ADCController import ADCControllerHardware, ADCControllerDebug
-from datastructs.PollData import PollParameters, TrialInfo
-from PollController import PollController
+from controllers.adc_controller import ADCControllerHardware, ADCControllerDebug
+from datastructs.poll_data import PollParameters, TrialInfo
+from poll_controller import PollController
 
 
 def get_connection_parameters():
@@ -185,9 +180,9 @@ def run_poll(params, conn_params):
 
             return poll_controller.poll_data
 
-    except Exception as e:
+    except RuntimeError as e:
         print(f"Error during poll: {e}")
-        logging.error(f"Poll error: {e}", exc_info=True)
+        logging.error("Poll error: %s", e, exc_info=True)
         return None
 
 
@@ -208,13 +203,15 @@ def print_summary(poll_data):
     if len(poll_data.lcr_measurements) > 0:
         z_values = poll_data.lcr_measurements["Z"]
         print(
-            f"LCR Z - Min: {z_values.min():.2e}, Max: {z_values.max():.2e}, Avg: {z_values.mean():.2e}"
+            f"LCR Z - Min: {z_values.min():.2e}, "
+            f"Max: {z_values.max():.2e}, Avg: {z_values.mean():.2e}"
         )
 
     if len(poll_data.adc_measurements) > 0:
         v_values = poll_data.adc_measurements["V"]
         print(
-            f"ADC V - Min: {v_values.min():.2f}, Max: {v_values.max():.2f}, Avg: {v_values.mean():.2f}"
+            f"ADC V - Min: {v_values.min():.2f}, "
+            f"Max: {v_values.max():.2f}, Avg: {v_values.mean():.2f}"
         )
 
 

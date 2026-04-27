@@ -4,27 +4,39 @@ This module coordinates exposure scheduling, background sampling threads, data
 queue processing, progress reporting, and persistence through ``PollData``.
 """
 
+import argparse
 import json
-import pandas as pd
-import numpy as np
-
-from controllers.LeashController import (
-    LeashController,
-    ExposureParameter,
-    ExposureImage,
-)
-from controllers.LCRController import LCRController
-from controllers.ADCController import ADCController
-from controllers.TimingRecorder import TimingRecorder
-from datastructs.PollData import PollData, PollParameters, TrialInfo
-from threading import Thread
-from queue import Queue
 import logging
 import time
+from queue import Queue
+from threading import Thread
+
+import numpy as np
+import pandas as pd
+
+from controllers.adc_controller import (
+    ADCController,
+    ADCControllerDebug,
+    ADCControllerHardware,
+)
+from controllers.lcr_controller import (
+    LCRController,
+    LCRControllerDebug,
+    LCRControllerHardware,
+)
+from controllers.leash_controller import (
+    ExposureImage,
+    ExposureParameter,
+    LeashController,
+    LeashControllerDebug,
+    LeashControllerHardware,
+)
+from datastructs.poll_data import PollData, PollParameters
 
 POLLING_INTERVAL_SECONDS = 0.025
 
 
+# pylint: disable=too-many-instance-attributes
 class PollController:
     """Coordinate a complete polling run across all controller interfaces."""
 
@@ -41,6 +53,11 @@ class PollController:
         self._progress: float = 0.0
         self._poll_data: PollData | None = None
         self.polling = False
+        self._on_completion = None
+        self._data_handler_thread = None
+        self._lcr_thread = None
+        self._adc_thread = None
+        self._printer_thread = None
 
     @property
     def poll_data(self) -> PollData | None:
@@ -70,7 +87,7 @@ class PollController:
         Raises:
             ValueError: If no LCR measurements are available.
         """
-        lcr_df = self._poll_data._lcr_measurements
+        lcr_df = self._poll_data.lcr_measurements
 
         if lcr_df.empty:
             raise ValueError(
@@ -174,17 +191,17 @@ class PollController:
         logging.info(
             "Leash session started and image loaded. Configuring LCR controller."
         )
-        self._lcr_controller.configureMeasurement(
+        self._lcr_controller.configure_measurement(
             poll_parameters.frequency_hz,
-            poll_parameters.MeasurementMode,
-            poll_parameters.MeasurementSpeed,
+            poll_parameters.measurement_mode,
+            poll_parameters.measurement_speed,
         )
         logging.info("LCR controller configured. Starting measurements.")
 
         self._leash_controller.set_z_position(70)
-        for _ in range(1, self._poll_data._poll_parameters.push_repeats):
-            self._leash_controller.press_z(self._poll_data._poll_parameters.push_force)
-            time.sleep(self._poll_data._poll_parameters.push_delay_s)
+        for _ in range(1, self._poll_data.poll_parameters.push_repeats):
+            self._leash_controller.press_z(self._poll_data.poll_parameters.push_force)
+            time.sleep(self._poll_data.poll_parameters.push_delay_s)
 
         overall_start_time = time.time()
 
@@ -202,13 +219,14 @@ class PollController:
         self._printer_thread.start()
         logging.info("Threads started. Poll is now running.")
         logging.info(
-            f"Threads started after {(time.time() - overall_start_time):.2f} seconds since poll start."
+            "Threads started after %.2f seconds since poll start.",
+            time.time() - overall_start_time,
         )
         if wait_for_completion:
             logging.info("Waiting for poll completion.")
             self.wait_for_poll_completion()
             logging.info(
-                f"Poll completed after {(time.time() - overall_start_time):.2f} seconds."
+                "Poll completed after %.2f seconds.", time.time() - overall_start_time
             )
 
     def _enforce_minimum_exposure_time(self, poll_parameters: PollParameters):
@@ -232,12 +250,15 @@ class PollController:
             )
         )
         logging.info(
-            "Exposure schedule padded by %.2fs with zero intensity to satisfy minimum exposure time %.2fs.",
+            "Exposure schedule padded by %.2fs with zero intensity "
+            "to satisfy minimum exposure time %.2fs.",
             buffer_duration,
             min_duration,
         )
 
-    def save_to_file(self, filename: str | None = None):
+    def save_to_file(
+        self, filename: str | None = None
+    ):  # pylint: disable=unused-argument
         """Persist current poll data to disk using ``PollData`` defaults."""
         self._poll_data.save_to_file()
         logging.info("Poll data saved to file.")
@@ -255,21 +276,21 @@ class PollController:
             self._adc_thread.join(timeout=timeout)
             self._data_handler_thread.join(timeout=timeout)
         except AttributeError as e:
-            logging.error(f"Ensure threads are initialized before calling join: {e}")
+            logging.error("Ensure threads are initialized before calling join: %s", e)
 
     def _handle_printer(self, dataqueue: Queue, status_interval: float | None = None):
         """Drive exposure timing and enqueue points-of-interest/status records."""
         start_time = time.time()
         dataqueue.put({"type": "poi", "label": "poll_start_time", "value": start_time})
-        exposure_schedule = self._poll_data._poll_parameters.exposure_parameters
-        total_poll_duration = sum([exp.duration for exp in exposure_schedule])
+        exposure_schedule = self._poll_data.poll_parameters.exposure_parameters
+        total_poll_duration = sum(exp.duration for exp in exposure_schedule)
 
         while self.polling:
             current_time = time.time()
             elapsed_time = current_time - start_time
             self._progress = min(elapsed_time / total_poll_duration, 1.0)
 
-            def handle_status(dataqueue: Queue, elapsed_time: float):
+            def handle_status(dataqueue: Queue):
                 raw_status = self._leash_controller.get_status()
                 try:
                     status = {
@@ -286,15 +307,17 @@ class PollController:
                         ),
                     }
                     dataqueue.put({"type": "poi", "data": status})
-                except Exception as e:
-                    logging.error(f"Failed to parse status from LeashController: {e}")
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logging.error("Failed to parse status from LeashController: %s", e)
 
             for i, exposure in enumerate(exposure_schedule):
-                exp_start_time = sum([exp.duration for exp in exposure_schedule[:i]])
+                exp_start_time = sum(exp.duration for exp in exposure_schedule[:i])
                 if elapsed_time >= exp_start_time and not hasattr(exposure, "_started"):
                     if exposure.intensity > 0:
                         logging.info(
-                            f"Starting exposure for segment {i} at elapsed time {elapsed_time:.2f} seconds."
+                            "Starting exposure for segment %d at elapsed time %.2f seconds.",
+                            i,
+                            elapsed_time,
                         )
                         dataqueue.put(
                             {
@@ -323,30 +346,34 @@ class PollController:
                                 },
                             }
                         )
-                        logging.info(f"Exposure call for segment {i} completed.")
+                        logging.info("Exposure call for segment %d completed.", i)
                     else:
                         logging.info(
-                            f"Skipping exposure for segment #{i} due to zero intensity."
+                            "Skipping exposure for segment #%d due to zero intensity.",
+                            i,
                         )
                     setattr(exposure, "_started", True)
+
             if elapsed_time >= total_poll_duration:
                 logging.info(
-                    f"Total poll duration of {total_poll_duration} seconds has elapsed. Ending poll."
+                    "Total poll duration of %s seconds has elapsed. Ending poll.",
+                    total_poll_duration,
                 )
                 self.polling = False
-                logging.critical(f"controller is {self._leash_controller.connected}")
+                logging.critical("controller is %s", self._leash_controller.connected)
                 self._leash_controller.set_z_position(200)
                 if self._on_completion:
                     self._on_completion()
+
             if (
                 status_interval is not None
                 and self._leash_controller.time_since_last_status is not None
                 and self._leash_controller.time_since_last_status >= status_interval
             ):
-                handle_status(dataqueue, elapsed_time)
+                handle_status(dataqueue)
                 time.sleep(POLLING_INTERVAL_SECONDS)
             else:
-                handle_status(dataqueue, elapsed_time)
+                handle_status(dataqueue)
 
     def _handle_data(self, dataqueue: Queue):
         """Consume queued measurements and append them to ``PollData`` tables."""
@@ -354,21 +381,25 @@ class PollController:
             try:
                 data_item = dataqueue.get(timeout=0.1)
                 logging.debug(
-                    f"Handling data item of type {data_item['type']} with data {data_item['data']} from queue."
+                    "Handling data item of type %s with data %s from queue.",
+                    data_item["type"],
+                    data_item["data"],
                 )
                 if data_item["type"] == "lcr":
                     logging.debug(
-                        f"Adding LCR measurement to poll data: {data_item['data']}"
+                        "Adding LCR measurement to poll data: %s", data_item["data"]
                     )
                     self._poll_data.add_lcr_measurement(data_item["data"])
                 elif data_item["type"] == "adc":
                     logging.debug(
-                        f"Adding ADC measurement to poll data: {data_item['data']}"
+                        "Adding ADC measurement to poll data: %s", data_item["data"]
                     )
                     self._poll_data.add_adc_measurement(data_item["data"])
                 elif data_item["type"] == "poi":
                     logging.debug(
-                        f"Adding POI measurement to poll data: label={data_item['data']['label']}, value={data_item['data']['value']}"
+                        "Adding POI measurement to poll data: label=%s, value=%s",
+                        data_item["data"]["label"],
+                        data_item["data"]["value"],
                     )
                     self._poll_data.add_poi_measurement(
                         label=data_item["data"]["label"],
@@ -376,13 +407,13 @@ class PollController:
                     )
                 else:
                     logging.warning(
-                        f"Received unknown data type in data handler: {data_item['type']}"
+                        "Received unknown data type in data handler: %s",
+                        data_item["type"],
                     )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 if dataqueue.empty():
                     continue
-                else:
-                    logging.error(f"Error handling data item from queue", exc_info=True)
+                logging.error("Error handling data item from queue", exc_info=True)
 
     def _poll_lcr_loop(self, dataqueue: Queue):
         """Continuously sample the LCR controller while polling is active."""
@@ -390,8 +421,8 @@ class PollController:
             try:
                 measurement = self._lcr_controller.measure()
                 dataqueue.put({"type": "lcr", "data": measurement})
-            except Exception as e:
-                logging.error(f"Error during LCR measurement: {e}")
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logging.error("Error during LCR measurement: %s", e)
             time.sleep(POLLING_INTERVAL_SECONDS)
 
     def _poll_adc_loop(self, dataqueue: Queue):
@@ -400,20 +431,12 @@ class PollController:
             try:
                 measurement = self._adc_controller.measure()
                 dataqueue.put({"type": "adc", "data": measurement})
-            except Exception as e:
-                logging.error(f"Error during ADC measurement: {e}")
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logging.error("Error during ADC measurement: %s", e)
             time.sleep(POLLING_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
-    import argparse
-    from controllers.LeashController import (
-        LeashControllerHardware,
-        LeashControllerDebug,
-    )
-    from controllers.LCRController import LCRControllerHardware, LCRControllerDebug
-    from controllers.ADCController import ADCControllerHardware, ADCControllerDebug
-
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         description="Demo of PollController functionality."

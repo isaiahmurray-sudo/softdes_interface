@@ -56,17 +56,24 @@ class TimingRecorder:
         record = self._records.get(record_id)
         if record is None:
             logging.error(
-                f"Attempted to end timing record with id {record_id} which does not exist."
+                "Attempted to end timing record with id %s which does not exist.",
+                record_id,
             )
-            return
+            return 0.0
         record.end_time = end_time
         record.duration = record.end_time - record.start_time
         logging.info(
-            f"Ended timing record {record_id} of type '{record.type}' with duration {record.duration:.4f} seconds."
+            "Ended timing record %s of type '%s' with duration %.4f seconds.",
+            record_id,
+            record.type,
+            record.duration,
         )
         logging.log(
             TIME_LOG_LEVEL,
-            f"Timing Record - ID: {record.id}, Type: {record.type}, Duration: {record.duration:.4f} seconds",
+            "Timing Record - ID: %s, Type: %s, Duration: %.4f seconds",
+            record.id,
+            record.type,
+            record.duration,
         )
         return record.duration
 
@@ -74,16 +81,16 @@ class TimingRecorder:
         """Load prior timing records from JSON into memory."""
         path = self._filename_build_path(filename)
         if not os.path.exists(path):
-            logging.info(f"Timing record file does not exist yet: {path}")
+            logging.info("Timing record file does not exist yet: %s", path)
             return
 
-        logging.info(f"Loading timing records from {path}")
-        with open(path, "r") as f:
+        logging.info("Loading timing records from %s", path)
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         for record_data in data:
             record = TimingRecord(**record_data)
             self._records[record.id] = record
-        logging.info(f"Loaded {len(self._records)} timing records from {path}")
+        logging.info("Loaded %d timing records from %s", len(self._records), path)
 
     def save_records(self, filename: str | None = None):
         """Persist current in-memory timing records to JSON."""
@@ -93,29 +100,32 @@ class TimingRecorder:
             path = self._filename
         else:
             path = self._filename_build_path(filename)
-        logging.info(f"Saving timing records to {path}")
-        with open(path, "w") as f:
+        logging.info("Saving timing records to %s", path)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 [record.__dict__ for record in self._records.values()], f, indent=4
             )
-        logging.info(f"Saved {len(self._records)} timing records to {path}")
+        logging.info("Saved %d timing records to %s", len(self._records), path)
 
     def get_delay(self, record_type: str) -> float:
         """Return cached average delay for a record type, defaulting to 0."""
         if record_type in self._delay_cache:
             return self._delay_cache[record_type]
-        else:
-            logging.warning(
-                f"Delay for record type '{record_type}' not found in cache. Returning 0."
-            )
-            return 0.0
+
+        logging.warning(
+            "Delay for record type '%s' not found in cache. Returning 0.",
+            record_type,
+        )
+        return 0.0
 
     def delay(self, record_type: str) -> float:
         """Sleep for the cached delay associated with ``record_type``."""
         delay = self.get_delay(record_type)
         logging.log(
             TIME_LOG_LEVEL,
-            f"Applying delay of {delay:.4f} seconds for record type '{record_type}'",
+            "Applying delay of %.4f seconds for record type '%s'",
+            delay,
+            record_type,
         )
         time.sleep(delay)
         return delay
@@ -124,10 +134,11 @@ class TimingRecorder:
         """Remove a timing record by id if present."""
         if record_id in self._records:
             del self._records[record_id]
-            logging.info(f"Deleted timing record with id {record_id}")
+            logging.info("Deleted timing record with id %s", record_id)
         else:
             logging.warning(
-                f"Attempted to delete timing record with id {record_id} which does not exist."
+                "Attempted to delete timing record with id %s which does not exist.",
+                record_id,
             )
 
     def calculate_delay_cache(self):

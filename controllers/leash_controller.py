@@ -4,29 +4,29 @@ This module defines shared controller contracts, simulation behavior, and the
 remote SSH-based hardware implementation used to execute Leash commands.
 """
 
-from enum import Enum
-
-try:
-    from controllers.TimingRecorder import TimingRecorder
-except ImportError as e:
-    try:
-        from TimingRecorder import TimingRecorder
-    except ImportError:
-        try:
-            from softdes_interface.controllers.TimingRecorder import TimingRecorder
-        except ImportError as e:
-            print(f"Error importing TimingRecorder: {e}")
-
+import dataclasses
+import json
+import logging
+import os
+import socket
 import threading
 import time
-import dataclasses
-import logging
-import json
 import uuid
-import os
+from enum import Enum
 from pathlib import Path
+
 import paramiko
-import socket
+
+try:
+    from controllers.timing_recorder import TimingRecorder
+except ImportError:
+    try:
+        from controllers.timing_recorder import TimingRecorder
+    except ImportError:
+        try:
+            from softdes_interface.controllers.timing_recorder import TimingRecorder
+        except ImportError as import_error:
+            print(f"Error importing TimingRecorder: {import_error}")
 
 
 class ConfidentialDataAccessError(RuntimeError):
@@ -72,6 +72,8 @@ def _load_confidential_json(filename: str, description: str) -> dict:
 
 
 class ExposureImage(Enum):
+    """Image options for exposure measurement."""
+
     V1 = "test.png"
     V2 = "test_square_v2.png"
 
@@ -105,36 +107,45 @@ class LeashController:
 
     @property
     def status_timestamp(self):
+        """Get the timestamp when status was last updated."""
         return self._status_timestamp
 
     @property
     def time_since_last_status(self):
+        """Get the time elapsed since the last status update."""
         if self._status_timestamp is None:
             return None
         return time.time() - self._status_timestamp
 
     @property
     def connected(self):
+        """Check if the controller is connected."""
         return self._connected
 
     @property
     def debug(self):
+        """Check if running in debug mode."""
         return True
 
     @property
     def status(self):
+        """Get the current status payload."""
         return self._status
 
     def expose(self, parameters: ExposureParameter):
+        """Execute an exposure with the given parameters."""
         raise NotImplementedError
 
     def set_z_position(self, position: float):
+        """Set the Z position to the specified value."""
         raise NotImplementedError
 
     def press_z(self, force: float):
+        """Press Z with the specified force."""
         raise NotImplementedError
 
     def get_z_position(self):
+        """Get the current Z position."""
         raise NotImplementedError
 
     def get_status(self):
@@ -143,18 +154,23 @@ class LeashController:
         return self._status
 
     def disconnect(self):
+        """Disconnect from the controller."""
         raise NotImplementedError
 
     def connect(self, ip):
+        """Connect to the controller at the specified IP address."""
         raise NotImplementedError
 
     def load_image(self, image: ExposureImage):
+        """Load an image for exposure operations."""
         raise NotImplementedError
 
     def start_leash_session(self):
+        """Start a Leash session."""
         raise NotImplementedError
 
     def close_leash_session(self):
+        """Close an active Leash session."""
         raise NotImplementedError
 
     def __enter__(self):
@@ -176,38 +192,45 @@ class LeashControllerDebug(LeashController):
         self._zpos = 0.0
 
     def expose(self, parameters: ExposureParameter):
-        logging.info(f"Exposing with parameters: {parameters}")
+        """Execute exposure with the given parameters."""
+        logging.info("Exposing with parameters: %s", parameters)
         self._timing_recorder.delay("expose")
         logging.info("Exposure complete.")
 
     def set_z_position(self, position: float):
-        logging.info(f"Setting Z position to: {position}")
+        """Set Z position to the specified value."""
+        logging.info("Setting Z position to: %s", position)
         self._timing_recorder.delay("set_z_position")
         logging.info("Z position set.")
         self._zpos = position
 
     def press_z(self, force: float):
-        logging.info(f"Pressing Z with force: {force}")
+        """Press Z with the specified force."""
+        logging.info("Pressing Z with force: %s", force)
         self._timing_recorder.delay("press_z")
         self._zpos = 0.1
         logging.info("Press complete.")
 
     def load_image(self, image: ExposureImage):
-        logging.info(f"Loading image: {image}")
+        """Load an image for exposure."""
+        logging.info("Loading image: %s", image)
         self._timing_recorder.delay("load_image")
         logging.info("Image loaded.")
 
     def start_leash_session(self):
+        """Start a Leash session."""
         logging.info("Starting leash session.")
         self._timing_recorder.delay("start_leash_session")
         logging.info("Leash session started.")
 
     def close_leash_session(self):
+        """Close a Leash session."""
         logging.info("Closing leash session.")
         self._timing_recorder.delay("close_leash_session")
         logging.info("Leash session closed.")
 
     def get_status(self):
+        """Fetch current status from debug payload."""
         self._timing_recorder.delay("get_status")
         self._status = _load_confidential_json(
             DEBUG_STATUS_FILENAME, "debug status payload"
@@ -216,21 +239,25 @@ class LeashControllerDebug(LeashController):
         return super().get_status()
 
     def get_z_position(self):
+        """Get the current Z position."""
         self.get_status()
         return self._zpos
 
     def disconnect(self):
+        """Disconnect from debug controller."""
         logging.info("Disconnecting LeashControllerDebug.")
         self._connected = False
 
     def connect(self, ip):
-        logging.info(f"Simulated connection to LeashController at {ip}")
+        """Establish a simulated connection."""
+        logging.info("Simulated connection to LeashController at %s", ip)
         self._timing_recorder.delay("connect")
         logging.info("Simulated connection established.")
         logging.info("LeashControllerDebug connected.")
         self._connected = True
 
 
+# pylint: disable=too-many-instance-attributes
 class LeashControllerHardware(LeashController):
     """SSH-backed Leash implementation that executes remote Python commands."""
 
@@ -270,6 +297,7 @@ class LeashControllerHardware(LeashController):
 
     @property
     def client(self):
+        """Get the SSH client instance."""
         return self._client
 
     def connect(
@@ -279,7 +307,7 @@ class LeashControllerHardware(LeashController):
         timeout=10,
         fetch_status=True,
         initialize_leash_session=True,
-    ):
+    ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
         """Open SSH transport, optionally initialize session, and fetch status."""
         task_id = self._timing_recorder.start_record("connect")
         if self._connected:
@@ -293,7 +321,8 @@ class LeashControllerHardware(LeashController):
             transport.auth_none("root")
 
             self._client = paramiko.SSHClient()
-            self._client._transport = transport
+            # Note: using _transport as paramiko doesn't expose alternative
+            self._client._transport = transport  # pylint: disable=protected-access
             self._ip = ip
             self._port = port
             self._connected = True
@@ -306,13 +335,13 @@ class LeashControllerHardware(LeashController):
             if fetch_status:
                 self.get_status()
                 logging.info("Initial status fetched.")
-        except Exception as e:
-            logging.error(f"Failed to connect to LeashController: {e}")
+        except OSError as connection_error:
+            logging.error("Failed to connect to LeashController: %s", connection_error)
             self.close_leash_session()
             if self._client is not None:
                 try:
                     self._client.close()
-                except Exception:
+                except OSError:
                     pass
                 self._client = None
             self._connected = False
@@ -343,12 +372,12 @@ class LeashControllerHardware(LeashController):
         if not self.connected:
             raise RuntimeError("Not connected to LeashController.")
 
-        stdin, stdout, stderr = self._client.exec_command(command)
+        _, stdout, stderr = self._client.exec_command(command)
         exit_code = stdout.channel.recv_exit_status()
         output = stdout.read().decode().strip()
         error = stderr.read().decode().strip()
         if exit_code != 0:
-            logging.error(f"Command failed: {command}\\nError: {error}")
+            logging.error("Command failed: %s\nError: %s", command, error)
             raise RuntimeError(f"Remote command failed: {error}")
         return output
 
@@ -429,11 +458,11 @@ class LeashControllerHardware(LeashController):
             self._wait_for_marker(ready_marker, timeout=max(5.0, self.timeout))
             logging.info("Leash session started successfully.")
             self._timing_recorder.end_record(task_id)
-        except Exception as e:
+        except OSError as session_error:
             self.close_leash_session()
-            logging.error(f"Failed to start leash session: {e}")
+            logging.error("Failed to start leash session: %s", session_error)
             self._timing_recorder.delete_record(task_id)
-            raise RuntimeError("Failed to start leash session.") from e
+            raise RuntimeError("Failed to start leash session.") from session_error
 
     def close_leash_session(self):
         """Close the interactive Leash session channel if one is open."""
@@ -441,7 +470,7 @@ class LeashControllerHardware(LeashController):
         if self._leash_channel is not None:
             try:
                 self._leash_channel.close()
-            except Exception:
+            except OSError:
                 pass
             self._loaded_image = None
             self._leash_channel = None
@@ -465,16 +494,16 @@ class LeashControllerHardware(LeashController):
 
                 try:
                     raw_output = self._wait_for_marker(marker, timeout=timeout)
-                except RuntimeError as exc:
-                    if "closed unexpectedly" in str(exc) and attempt == 1:
+                except RuntimeError as channel_error:
+                    if "closed unexpectedly" in str(channel_error) and attempt == 1:
                         self.close_leash_session()
                         logging.warning(
                             "Leash session was closed unexpectedly; restarting once."
                         )
                         continue
                     raise RuntimeError(
-                        f"Failed to run leash python command: {exc}"
-                    ) from exc
+                        f"Failed to run leash python command: {channel_error}"
+                    ) from channel_error
 
                 output = self._clean_repl_output(raw_output, marker, python_lines)
 
@@ -556,8 +585,8 @@ class LeashControllerHardware(LeashController):
 
     def get_z_position(self):
         """Return Z position extracted from a freshly queried status payload."""
-        status = self.get_status()
-        return status.get("z_position")
+        status_payload = self.get_status()
+        return status_payload.get("z_position")
 
     def get_status(self, try_run_persistent=True, attempts=3):
         """Fetch and parse Leash status, retrying persistent mode when enabled."""
@@ -569,40 +598,50 @@ class LeashControllerHardware(LeashController):
             try:
                 response = raw_output.split("___partition___")[1]
                 return json.loads(response)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError as json_error:
                 logging.error(
-                    f"Failed to parse status output: {e}, raw output: {raw_output}"
+                    "Failed to parse status output: %s, raw output: %s",
+                    json_error,
+                    raw_output,
                 )
-                raise RuntimeError("Failed to parse status output") from e
+                raise RuntimeError("Failed to parse status output") from json_error
 
         task_id = self._timing_recorder.start_record("get_status")
         if try_run_persistent:
-            for a in range(attempts):
+            for attempt_num in range(attempts):
                 try:
                     output = self.run_leash_persistent_python(
                         [status_python_line], timeout=3.0
                     )
-                    status = process_status_output(output)
+                    status_payload = process_status_output(output)
                     self._timing_recorder.end_record(task_id)
                     self._status_timestamp = time.time()
-                    self._status = status
+                    self._status = status_payload
                     logging.info(
-                        f"Status fetched successfully using persistent leash session. (Duration: {time.time() - time_start:.3f}s, attempt {a+1}/{attempts})"
+                        "Status fetched successfully using persistent leash session."
+                        " (Duration: %.3fs, attempt %d/%d)",
+                        time.time() - time_start,
+                        attempt_num + 1,
+                        attempts,
                     )
                     return self._status
-                except Exception as e:
+                except OSError as status_error:
                     logging.error(
-                        f"Failed to get status from LeashController from persistent session: {e}"
+                        "Failed to get status from LeashController from persistent"
+                        " session: %s",
+                        status_error,
                     )
         response = self._run_command(f"leash <<'EOF'\n{status_python_line}\nEOF")
-        status = process_status_output(response)
+        status_payload = process_status_output(response)
         self._status_timestamp = time.time()
-        self._status = status
+        self._status = status_payload
         self._timing_recorder.end_record(task_id)
         logging.info(
-            f"Status fetched successfully using one-off leash command. (Duration: {time.time() - time_start:.2f}s)"
+            "Status fetched successfully using one-off leash command."
+            " (Duration: %.2fs)",
+            time.time() - time_start,
         )
-        return status
+        return status_payload
 
 
 if __name__ == "__main__":

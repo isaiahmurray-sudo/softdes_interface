@@ -4,19 +4,19 @@ import dataclasses
 from dataclasses import field, dataclass
 from datetime import datetime as dt
 import os
-import re
-import pandas as pd
 import uuid
 import time
 import json
 from enum import Enum
-from controllers.LCRController import MeasurementMode, MeasurementSpeed
-from controllers.LeashController import ExposureParameter, ExposureImage
+import pandas as pd
+from controllers.lcr_controller import MeasurementMode, MeasurementSpeed
+from controllers.leash_controller import ExposureParameter
 
 
 class CustomJSONEncoder(json.JSONEncoder):
     """JSON encoder that handles enums and exposure parameter dataclasses."""
 
+    # pylint: disable="arguments-renamed"
     def default(self, obj):
         """Serialize custom domain objects used by poll metadata payloads."""
         if isinstance(obj, Enum):
@@ -94,7 +94,6 @@ class PollData:
         root_dir = "softdes_interface/data/polls"
         index, filename = self._prep_file_prefix()
         self._poll_parameters.trial_info.trial_index = index
-        self
         os.makedirs(f"{root_dir}/raw/{filename}", exist_ok=True)
         self._lcr_measurements.to_csv(
             f"{root_dir}/raw/{filename}/lcr_measurements.csv", index=False
@@ -120,13 +119,13 @@ class PollData:
             },
         }
 
-        with open(f"{root_dir}/{filename}.json", "w") as f:
+        with open(f"{root_dir}/{filename}.json", "w", encoding="utf-8") as f:
             json.dump(metadata_dict, f, indent=2, cls=CustomJSONEncoder)
 
     def _prep_file_prefix(self):
         """Allocate next poll index and generate timestamped filename stem."""
         now = dt.now()
-        with open("test_id.txt", "r+") as f:
+        with open("test_id.txt", "r+", encoding="utf-8") as f:
             test_id = int(f.read())
             f.seek(0)
             f.write(str(test_id + 1))
@@ -148,6 +147,7 @@ class TrialInfo:
     thickness: float | None = None
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class PollParameters:
     """Configuration inputs required to execute a poll run."""
@@ -155,8 +155,8 @@ class PollParameters:
     exposure_parameters: list[ExposureParameter]
     frequency_hz: int
     minimum_exposure_time_s: float = 0.0
-    MeasurementMode: MeasurementMode = MeasurementMode.IMPEDANCE
-    MeasurementSpeed: MeasurementSpeed = MeasurementSpeed.FAST
+    measurement_mode: MeasurementMode = MeasurementMode.IMPEDANCE
+    measurement_speed: MeasurementSpeed = MeasurementSpeed.FAST
     trial_info: TrialInfo = field(
         default_factory=lambda: TrialInfo(
             trial_name="Default Trial", resin_type="Unknown"
