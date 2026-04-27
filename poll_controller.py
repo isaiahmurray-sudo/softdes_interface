@@ -264,7 +264,13 @@ class PollController:
                             }
                         ),
                     }
-                    dataqueue.put({"type": "poi", "data": status})
+                    dataqueue.put(
+                        {
+                            "type": "poi",
+                            "data": {"label": "poll_start_time", "value": start_time},
+                            "status": status,
+                        }
+                    )
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logging.error("Failed to parse status from LeashController: %s", e)
 

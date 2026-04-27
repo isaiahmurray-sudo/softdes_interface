@@ -230,11 +230,24 @@ class LeashControllerDebug(LeashController):
         logging.info("Leash session closed.")
 
     def get_status(self):
-        """Fetch current status from debug payload."""
+        """Fetch current status from debug payload or fallback to a mock."""
         self._timing_recorder.delay("get_status")
-        self._status = _load_confidential_json(
-            DEBUG_STATUS_FILENAME, "debug status payload"
-        )
+
+        try:
+            self._status = _load_confidential_json(
+                DEBUG_STATUS_FILENAME, "debug status payload"
+            )
+        except ConfidentialDataAccessError:
+            # Fallback for debug/testing if the confidential directory isn't populated
+            self._status = {
+                "info": {
+                    "forceAndPositionReadings": {
+                        "zForce": 0.0,
+                        "zPosition": getattr(self, "_zpos", 0.0),
+                    }
+                }
+            }
+
         self._status_timestamp = time.time()
         return super().get_status()
 

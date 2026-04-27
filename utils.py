@@ -1,6 +1,7 @@
-""" Utils for poll collectiona nd processing """
+"""Utils for poll collectiona nd processing"""
 
 import numpy as np
+
 
 def compute_ionic_viscosity(
     z_ohm: np.ndarray,
