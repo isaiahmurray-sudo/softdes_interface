@@ -1,0 +1,8 @@
+matplotlib==3.10.9
+numpy==2.4.4
+pandas==3.0.2
+paramiko==4.0.0
+PyQt6==6.11.0
+pyqt6_sip==13.11.1
+pytest==9.0.3
+pyvisa==1.16.2
