@@ -24,6 +24,37 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, ExposureParameter):
             return obj.to_dict()
         return super().default(obj)
+    
+@dataclass
+class TrialInfo:
+    """Descriptive metadata captured before and after a trial."""
+
+    trial_name: str
+    resin_type: str
+    trial_index: int | None = None
+    pre_trial_notes: str | None = None
+    post_trial_notes: str | None = None
+    thickness: float | None = None
+
+
+# pylint: disable=too-many-instance-attributes
+@dataclass
+class PollParameters:
+    """Configuration inputs required to execute a poll run."""
+
+    exposure_parameters: list[ExposureParameter]
+    frequency_hz: int
+    minimum_exposure_time_s: float = 0.0
+    measurement_mode: MeasurementMode = MeasurementMode.IMPEDANCE
+    measurement_speed: MeasurementSpeed = MeasurementSpeed.FAST
+    trial_info: TrialInfo = field(
+        default_factory=lambda: TrialInfo(
+            trial_name="Default Trial", resin_type="Unknown"
+        )
+    )
+    push_force: float = 70
+    push_repeats: int = 2
+    push_delay_s: float = 3
 
 
 class PollData:
@@ -133,38 +164,6 @@ class PollData:
             test_id,
             f"PL_{test_id:04d}_{self.poll_parameters.trial_info.resin_type}_{now.strftime("%H%M")}",
         )
-
-
-@dataclass
-class TrialInfo:
-    """Descriptive metadata captured before and after a trial."""
-
-    trial_name: str
-    resin_type: str
-    trial_index: int | None = None
-    pre_trial_notes: str | None = None
-    post_trial_notes: str | None = None
-    thickness: float | None = None
-
-
-# pylint: disable=too-many-instance-attributes
-@dataclass
-class PollParameters:
-    """Configuration inputs required to execute a poll run."""
-
-    exposure_parameters: list[ExposureParameter]
-    frequency_hz: int
-    minimum_exposure_time_s: float = 0.0
-    measurement_mode: MeasurementMode = MeasurementMode.IMPEDANCE
-    measurement_speed: MeasurementSpeed = MeasurementSpeed.FAST
-    trial_info: TrialInfo = field(
-        default_factory=lambda: TrialInfo(
-            trial_name="Default Trial", resin_type="Unknown"
-        )
-    )
-    push_force: float = 70
-    push_repeats: int = 2
-    push_delay_s: float = 3
 
 
 @dataclass
